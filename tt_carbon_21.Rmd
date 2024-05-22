@@ -1,0 +1,211 @@
+---
+title: "Tidy Tuesday, Week 21: Carbon Majors Emissions Data"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#libraries
+library(tidyverse)
+library(tidytuesdayR)
+library(ggplot2)
+library(plotly)
+library(lubridate)
+library(ggpubr)
+library(extrafont)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#https://github.com/rfordatascience/tidytuesday/blob/master/data/2024/2024-05-21/readme.md#how-to-participate
+
+tuesdata <- tidytuesdayR::tt_load(2024, week = 21)
+
+emissions <- tuesdata$emissions
+```
+
+```{r, include=FALSE, echo=FALSE, warning=FALSE}
+range(emissions$year) #1854-2022
+unique(emissions$parent_type) #"State-owned Entity"     "Investor-owned Company" "Nation State"  
+unique(emissions$parent_entity) #122 companies
+unique(emissions$commodity) #1] "Oil & NGL" ,"Natural Gas" ,"Sub-Bituminous Coal" "Metallurgical Coal"  "Bituminous Coal" , "Thermal Coal" , "Anthracite Coal" ,"Cement"  ,"Lignite Coal" 
+range(emissions$production_value) #4.398386e-03 2.719200e+04
+range(emissions$production_unit) #Bcf/yr and Million tonnes/yr. Do I need to recalculate so they are the same? 
+range(emissions$total_emissions_MtCO2e) # 3.206001e-04 8.646906e+03
+
+emissions %>%
+  filter(commodity == "Oil & NGL") %>%
+  summarize(production_unit = unique(production_unit))%>%
+  print() #one value: Million bbl/yr
+
+emissions %>%
+  filter(commodity == "Natural Gas") %>%
+  summarize(production_unit = unique(production_unit))%>%
+  print() #Bcf/yr
+#no need to recalculate; Million bbl/yr refers to Oil & NGL and Bcf/yr related to Natural Gas
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+emissions_clean <- emissions 
+
+emissions_clean$parent_entity <- as.factor(emissions_clean$parent_entity)
+emissions_clean$parent_type <- as.factor(emissions_clean$parent_type)
+#emissions_clean$year <- as.Date(emissions_clean$year)
+emissions_clean$commodity <- as.factor(emissions_clean$commodity)
+emissions_clean$production_unit <- as.factor(emissions_clean$production_unit)
+
+emissions_clean <- emissions_clean %>%
+  mutate(new_date = as.Date(as.character(year), "%Y"),
+         report_year = format(new_date, "%Y"))
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+ggplot(data = emissions_clean, aes(x=commodity))+
+  geom_bar(aes(fill=parent_type))+
+  scale_fill_brewer(palette = "BuPu")+
+  labs(title = "Title",
+       x = "",
+       y= "",
+       caption = "Data Source: Carbon Majors, provided by TidyTuesday",
+       fill = "")+
+  coord_flip()+
+  theme_minimal()
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+ggplot(data = emissions_clean, aes(x=year, y = total_emissions_MtCO2e, color = parent_type))+ 
+  geom_point()+
+  labs(title = "Title",
+       x = "Years 1854-2022",
+       y = "Total emissions by parent type",
+       color = "")+
+  scale_color_manual(values = c("#66c2a5", "#fc8d62", "#8da0cb"))+
+  theme(axis.text.x = element_blank())
+
+#I was surprised by the increase of emissions related to Nation States. I expected the parent_type groups to be closer to each other in terms of emissions.
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+emissions_50 <- emissions_clean %>%
+  filter(report_year > 1972) 
+  emissions_50$real_year <- as.numeric(as.character(emissions_50$report_year))
+  
+emissions_50_plot <- emissions_50 %>% 
+  group_by(real_year, commodity, parent_type) %>% 
+  summarize(tot_emit = sum(total_emissions_MtCO2e))
+
+  ggplot(data = emissions_50_plot, aes(x=real_year, y = tot_emit, color = parent_type))+ 
+  geom_point()+
+  labs(title = "Title",
+       x = "Years 1973-2022",
+       y = "Total emissions by parent type",
+       color = "")+
+  scale_color_manual(values = c("#66c2a5", "#fc8d62", "#8da0cb"))+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+p1area <- ggplot(data = emissions_50_plot,
+       aes(x = real_year,
+           y = tot_emit,
+           fill = commodity))+
+  geom_area(alpha = 0.6, size = 0.25, color = "white") +
+  scale_fill_viridis_d()+
+  facet_wrap(~parent_type, nrow=3)+
+  
+  labs(title = "Carbon emissions (million tonnes of carbon dioxide equivalent)",
+       subtitle = "By year and commodity, by parent type, 1973-2022.",
+       x = "",
+       y = "",
+       group = "",
+       caption = "Source: TidyTuesday, Carbon Majors")+
+  theme_bw()+
+  theme(
+        axis.text.x = element_text(angle = 25, vjust = 0.5, hjust =1, size=10, face= "bold"),
+        text = element_text(family = "Cambria"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+        )
+p1area
+```
+
+```{r, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+#played with https://github.com/wch/extrafont
+emissions_ns_by_entity <-
+  emissions_50 %>%
+  filter(parent_type == "Nation State") %>%
+  arrange(commodity, total_emissions_MtCO2e)
+
+p2 <- ggplot(data = emissions_ns_by_entity,
+       aes(fct_reorder(commodity, total_emissions_MtCO2e, .fun = sum),
+           y = total_emissions_MtCO2e,
+           fill = parent_entity))+
+  labs(title = "Carbon emissions (million tonnes of carbon dioxide equivalent)",
+       subtitle = "Traced to a Nation State parent entity, by commodity type, 1973-2022.",
+       x = "",
+       y = "",
+       fill = "",
+       caption = "Source: TidyTuesday, Carbon Majors")+
+  geom_bar(alpha = 0.6, stat = "identity")+
+  scale_fill_viridis_d()+
+  scale_x_discrete(label = function(x) str_wrap(x, width=8))+
+  theme_bw()+
+  theme(
+    #axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.text.x = element_text(angle = 45, vjust = 0.5, hjust =1, size = 10, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(family = "Cambria")
+        )
+p2
+```
+
+#TidyTuesday week 21 (5/21/2024) - Carbon Majors Emissions Data.
+
+This week's data from #CarbonMajors covers global carbon emissions and the parent entities and parent types they can be traced back to. I focused on the last 50 years in the data set and created an area chart showing emissions over time and by commodity as well as a stacked bar chart showing the breakdown of emissions for Nation State parent entities. 
+
+It was interesting that the parent type with the biggest change was the Nation State category and coal was the commodity connected to the largest increase in emissions for this parent type. This made me think of two things: the rapid industrialization of China powered by coal, and the change in ownership of heavy industry in post-Soviet countries, from state-owned to privatized and back to state-owned in some cases.
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+figure <- ggarrange(p1area, p2,
+                    ncol = 1, nrow = 2)
+
+figure
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#this has a lot more players involved and doesn't tell as clean a story as the Nation State one.
+emissions_soe_by_entity <-
+  emissions_50 %>%
+  filter(parent_type == "State-owned Entity") %>%
+  arrange(commodity, total_emissions_MtCO2e)
+
+p3 <- ggplot(data = emissions_soe_by_entity,
+       aes(fct_reorder(commodity, total_emissions_MtCO2e, .fun = sum),
+           y = total_emissions_MtCO2e,
+           fill = parent_entity))+
+  labs(title = "Total carbon emissions by commodity",
+  subtitle = "Derived from State-owned Entity, by commodity, 1973-2022",
+       
+       x = "",
+       y = "",
+       fill = "")+
+  geom_bar(stat = "identity")+
+  theme_bw()+
+  theme(
+    #axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_text(angle = 25, vjust = 0.5, hjust =1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+        )
+  
+p3
+```
