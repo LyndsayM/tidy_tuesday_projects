@@ -1,0 +1,406 @@
+---
+title: "Tidy Tuesday, Week 21: Carbon Majors Emissions Data"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#libraries
+library(tidyverse)
+library(tidytuesdayR)
+library(ggplot2)
+library(plotly)
+library(lubridate)
+library(ggpubr)
+library(extrafont)
+
+library(here)
+library(fs)
+library(rvest)
+library(polite)
+library(glue)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#https://github.com/rfordatascience/tidytuesday/tree/master/data/2024/2024-06-04
+
+cheeses <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2024/2024-06-04/cheeses.csv')
+
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(fs)
+library(rvest)
+library(polite)
+library(glue)
+
+working_dir <- here::here("data", "2024", "2024-06-04")
+session <- polite::bow("https://www.cheese.com/")
+
+# Get the full list of cheeses. ------------------------------------------------
+cheeses <- purrr::map(
+  letters,
+  \(letter) {
+    this_path <- glue::glue("alphabetical/{letter}")
+    session <- polite::nod(session, this_path)
+    pages <- polite::scrape(session, query = list(per_page = 100)) |>
+      rvest::html_elements(".page-link") |>
+      rvest::html_text2() |>
+      readr::parse_integer()
+    purrr::map(
+      pages,
+      \(page) {
+        cheeses <- polite::scrape(session, query = list(per_page = 100, page = page)) |>
+          rvest::html_elements(".cheese-item h3 a")
+        tibble::tibble(
+          cheese = rvest::html_text2(cheeses),
+          url = rvest::html_attr(cheeses, "href") |>
+            rvest::url_absolute(base = session$url)
+        )
+      }
+    ) |>
+      purrr::list_rbind()
+  }
+) |>
+  purrr::list_rbind()
+
+# Functions for two types of cleaning. -----------------------------------------
+fetch_summary_item <- function(summary_block, css) {
+  summary_block |> 
+    rvest::html_element(css) |> 
+    rvest::html_text2()
+}
+
+fetch_summary_items <- function(summary_block, css) {
+  summary_block |> 
+    rvest::html_elements(css) |> 
+    rvest::html_text2() |> 
+    stringr::str_flatten_comma(na.rm = TRUE)
+}
+
+# Fetch details page-by-page ---------------------------------------------------
+# This took a very long time to process.
+cheese_details <- purrr::map(
+  cheeses$url,
+  \(cheese_url) {
+    session <- polite::nod(session, cheese_url)
+    summary_block <- polite::scrape(session) |> 
+      rvest::html_elements(".summary-points")
+    tibble::tibble(
+      url = cheese_url,
+      milk = summary_block |> 
+        fetch_summary_items(".summary_milk a"),
+      country = summary_block |>
+        fetch_summary_items(".summary_country a"),
+      region = summary_block |> 
+        fetch_summary_item(".summary_region"),
+      family = summary_block |> 
+        fetch_summary_item(".summary_family"),
+      type = summary_block |> 
+        fetch_summary_item(".summary_moisture_and_type"),
+      fat_content = summary_block |> 
+        fetch_summary_item(".summary_fat"),
+      calcium_content = summary_block |> 
+        fetch_summary_item(".summary_calcium"),
+      texture = summary_block |> 
+        fetch_summary_items(".summary_texture a"),
+      rind = summary_block |> 
+        fetch_summary_item(".summary_rind"),
+      color = summary_block |> 
+        fetch_summary_item(".summary_tint"),
+      flavor = summary_block |> 
+        fetch_summary_item(".summary_taste"),
+      aroma = summary_block |> 
+        fetch_summary_item(".summary_smell"),
+      vegetarian = summary_block |> 
+        fetch_summary_item(".summary_vegetarian"),
+      vegan = summary_block |> 
+        fetch_summary_item(".summary_vegan"),
+      synonyms = summary_block |> 
+        fetch_summary_item(".summary_synonym"),
+      alt_spellings = summary_block |> 
+        fetch_summary_item(".summary_alt_spelling"),
+      producers = summary_block |> 
+        fetch_summary_item(".summary_producer")
+    )
+  }
+) |> 
+  purrr::list_rbind()
+
+cheese_details <- cheese_details |> 
+  dplyr::mutate(
+    dplyr::across(
+      c(region:calcium_content, rind:producers),
+      ~ stringr::str_remove(.x, "^[^:]+: ")
+    ),
+    dplyr::across(
+      c(vegetarian, vegan),
+      ~ dplyr::case_match(
+        .x,
+        "no" ~ FALSE,
+        "yes" ~ TRUE,
+        .default = NA
+      )
+    )
+  )
+
+cheeses <- cheeses |> 
+  dplyr::left_join(cheese_details, by = dplyr::join_by(url))
+
+# Save -------------------------------------------------------------------------
+#readr::write_csv(
+ # cheeses,
+#  fs::path(working_dir, "cheeses.csv")
+#)
+```
+
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#a word cloud with the producer countries and size changing by frequency of country would be interesting
+library(wordcloud)
+library(RColorBrewer)
+library(tidyverse)
+#I checked and there are multiple instances where there are more than one country listed. 
+cheese_countries <- cheeses %>% 
+  select(country) %>%
+  #rename countries with different names for the same place
+  mutate(country = case_when(country == "England, Great Britain, United Kingdom" ~ "England",
+                             country == "England, United Kingdom" ~ "England",
+                             country == "England" ~ "England",
+                             country == "Great Britain, United Kingdom, Wales" ~ "Wales",
+                             country == "United Kingdom, Wales" ~ "Wales",
+                             country == "Scotland, United Kingdom" ~ "Scotland",
+                             country == "Scotland" ~ "Scotland",
+                             country == "Great Britain, Scotland, United Kingdom" ~ "Scotland",
+                             country == "England, Scotland, Wales" ~ "UK",
+                             country == "England, Scotland, United Kingdom" ~ "UK",
+                             country == "Great Britain" ~ "UK",
+                             country == "United Kingdom" ~ "UK",
+                             country == "United States" ~ "USA",
+                             country == "Cyprus, Egypt, Israel, Jordan, Lebanon, Middle East, Syria" ~ "Middle East",
+                             country == "Lebanon, Middle East" ~ "Middle East",
+                             country == "Holland" ~ "Netherlands",
+                             country == "Czech Republic" ~ "Czechia",
+                             #any combos including US and/or Canada and/or Mexico
+                             country == "Canada, United States" ~ "North America",
+                             country == "Mexico, United States" ~ "North America",
+                             country == "Egypt, Lebanon, Syria" ~ "Middle East",
+                             country == "Denmark, Finland, Germany, Iceland, Norway, Sweden" ~ "Europe",
+                             country == "Hungary, Poland, Slovakia" ~ "Europe",
+                             country == "Austria, Germany" ~ "Europe",
+                             country == "France, Italy" ~ "Europe",
+                             country == "France, Switzerland" ~ "Europe", 
+                             country == "Belgium, Germany, Netherlands" ~ "Europe",
+                             country == "Albania, Bulgaria, Croatia, Greece, Israel, Macedonia, Romania, Serbia" ~ "Europe",
+                             
+                             country == "China, Tibet"  ~ "Asia", 
+                             country == "Bangladesh, India" ~ "Asia",
+                             country == "China, Nepal, Tibet" ~ "Asia",
+                             #any combos of 2 or more countries
+                             country == "Canada, Italy" ~ "Multiple",
+                             country == "Canada, France" ~ "Multiple",
+                             country == "Italy, United States" ~ "Multiple",
+                             country == "France, United States" ~ "Multiple",
+                             country == "Netherlands, United States"  ~ "Multiple", 
+                             country == "Australia, France" ~ "Multiple",
+                             country ==  "United Kingdom, United States" ~ "Multiple",
+                             country == "Canada, Denmark, France, Germany, Netherlands, United States" ~ "Multiple",
+                             country == "Belgium, Canada, France, Switzerland, United States" ~ "Multiple",
+                             country == "Canada, India, United States" ~ "Multiple",
+                             .default = as.character(country)))%>% 
+
+  drop_na()%>%
+  arrange(desc(country))
+
+
+
+unique(cheese_countries$country)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#to prepare the data for the word cloud, create a document-term-matrix
+library(tm)
+cheese_countries <- cheese_countries %>%
+  #remove all of the white space 
+  mutate(country = gsub(" ", "_", country, fixed = TRUE))
+
+head(cheese_countries) 
+
+text <- cheese_countries$country
+
+# Create a corpus  
+docs <- Corpus(VectorSource(text))
+#STEP 2: Clean the text data
+docs <- docs %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+
+
+#STEP 3: Create a document-term-matrix
+dtm <- TermDocumentMatrix(cheese_countries)
+matrix <- as.matrix(dtm)
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words) %>% 
+  mutate(word = gsub(",", "", word),
+         word = gsub('[\"]', '', word) 
+  )
+ 
+
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#generate the word cloud
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, 
+          freq = df$freq, min.freq = 5,           
+          max.words=305, 
+          random.order=FALSE, rot.per=0.25,            
+          colors=brewer.pal(8, "Dark2"),
+          vfont=c("serif", "italic"))
+```
+
+```{r, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+#with wordcloud2
+library(wordcloud2)
+wordcloud2(data = df, 
+           size=1,
+           color='random-dark',
+           backgroundColor = 'beige',
+           shape = 'cardioid')
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+# load wordcloud2
+library(wordcloud2) 
+
+# install webshot
+library(webshot)
+webshot::install_phantomjs(force = T)
+
+# Make the graph
+my_graph <- wordcloud2(data = df, 
+           size=1,
+           color='random-light',
+           backgroundColor = 'beige',
+           shape = 'cardioid')
+
+# save it in html
+library("htmlwidgets")
+saveWidget(my_graph,"tmp.html",selfcontained = F)
+
+# and in png or pdf
+webshot("tmp.html","fig_1.pdf", delay =5, vwidth = 480, vheight=480)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+# Is there a relationship between fat content and cheese type? What about texture, flavor, or aroma?
+library(stringi)
+#https://www.statology.org/r-gsub-multiple-patterns/
+cheese_fat <- cheeses %>% 
+  filter(!is.na(fat_content))%>%
+  select(cheese, type, fat_content) 
+#%>%
+  #couple of things I need to do. 1. remove - and %. 2. keep only the first 2 numbers. 3. recalculate numbers that aren't percentages and remove numbers
+  #this will remove the letters in the column
+  #mutate(fat_clean = stri_replace_all_regex(fat_content,
+  #                                          pattern = c('g/', 'g'),
+   #                                         replacement = c("", "")
+    #                                        ))
+ # mutate()
+  #I think what I want to do is create 2 subsets, one that has percentage values and ther other that has values that need to be turned into a percent
+cheese_fat_perc <- cheese_fat %>% 
+   filter(str_detect(fat_content, fixed("%"))) %>%
+  #I'm just keeping the first 2 letters - this represents the lowest value
+  mutate(fat_noperc = substr(fat_content, start = 1, stop = 2))%>%
+  mutate(fat_perc = gsub('%', '', fat_noperc)) %>%
+  mutate(fat_perc = as.numeric(fat_perc)) %>%
+  select(cheese, type, fat_perc)
+
+cheese_fat_calc <- cheese_fat %>% 
+    filter(!str_detect(fat_content, "\\%"))%>%
+  #keep only the numeric value (rounding down)
+  mutate(fat_perc = as.numeric(gsub("([0-9]+).*$", "\\1", fat_content)))%>%
+  select(cheese, type, fat_perc)
+
+cheese_fat_clean <- rbind(cheese_fat_perc, cheese_fat_calc)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+#now to create a more general categories for the cheese types.
+cheese_fat_clean <- cheese_fat_clean %>% 
+  #https://stackoverflow.com/questions/43696227/mutate-with-case-when-and-contains
+  #create basic types that capture some common types throughout - semi-soft, soft, hard, firm, and then plus artisan
+  mutate(basic_type = case_when(
+    grepl("semi-soft, artisan", type) ~ "semi-soft, artisan",
+    grepl("semi-soft", type) ~ "semi-soft",
+    grepl("soft, artisan", type) ~ "soft, artisan",
+    grepl("soft", type) ~ "soft",
+    grepl("semi-hard", type) ~ "semi-hard",
+    grepl("hard, artisan", type) ~ "hard, artisan",
+    grepl("hard", type) ~ "hard",
+    grepl("semi-firm, artisan", type) ~ "semi-firm, artisan",
+    grepl("semi-firm", type) ~ "semi-firm",
+    
+    grepl("firm", type) ~ "firm",
+    
+    .default = as.character(type)
+  )) %>% 
+  drop_na()
+
+cheese_fat_scatter <- cheese_fat_clean %>% 
+  group_by(basic_type) %>% 
+  summarize(avg_fat = round(mean(fat_perc),2))
+
+cheese_fat_scatter$basic_type <- as_factor(cheese_fat_scatter$basic_type)
+ 
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+#this is a scatter plot showing correlation between type of cheese and fat percentage
+ggplot(data = cheese_fat_clean, aes(x = type, y = fat_perc))+
+  geom_point()
+```
+
+```{r, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+library(plotly)
+p1 <- ggplot(
+  data = cheese_fat_scatter,
+  aes(x = basic_type, y =avg_fat, 
+      size = avg_fat))+ 
+  labs(title = "Average fat content by cheese type",
+  subtitle = "Data Source: TidyTuesday and cheese.com",
+       x = "",
+       y = "",
+       size = "",
+  caption = "Lyndsay Miles (2024)")+
+  theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45, vjust = 0.50),
+        #picked a cheese color code https://colorcodes.io/yellow/cheese-color-codes/
+        panel.background = element_rect(fill = "#FFE380", 
+                                        color = "#FFE380")
+        )+
+  geom_point(color = "#B58B00", fill = "#FEFBEA", shape = 21, show.legend = FALSE) 
+
+
+#ggplotly(p1)
+
+p1
+```
+For this week's TidyTuesday I just wanted to have some fun. I created a scatter plot showing the average fat content by cheese type, and styled it to be reminiscent of a block of cheese. Then I created a word cloud showing the frequency of cheese by country.
+
+My data exploration this week was a great reminder of how much of data visualization is data cleaning and shaping. To create these charts, I did a lot of recoding using case_when() and grepl(). 
