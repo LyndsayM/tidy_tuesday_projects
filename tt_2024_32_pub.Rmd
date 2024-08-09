@@ -3,9 +3,9 @@ title: "Tidy Tuesday Week 32, 2024: The Olympics"
 author: "Lyndsay Miles"
 output: html_document
 ---
-I created this visualization using the data set shared by the TidyTuesday project for Week 32 of 2024. It includes data from 1896 to 2016 on participation in the Winter and Summer Olympic Games. I chose to look at medals won by Team USA from 1900 to 2009 by grouping by decade and calculating counts of medals.
+I created this visualization using the data set shared by the TidyTuesday project for Week 32 of 2024. It includes data from 1896 to 2016 on participation in the Winter and Summer Olympic Games. I chose to look at medals won by Team USA in the Summer Games from 1900 to 2009 by grouping by decade and calculating counts of medals.
 
-My code: 
+My code: https://github.com/LyndsayM/tidy_tuesday_projects/blob/main/tt_2024_32_pub.Rmd
 ```{r setup, include=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
@@ -23,7 +23,6 @@ olympics <- tuesdata$olympics
 ```
 
 ```{r, echo=FALSE, include=FALSE, warning=FALSE}
-#when/where did the United States win the most Gold/Silver/Bronze?
 team_usa <- olympics %>%
   filter(noc == "USA") %>% 
   drop_na(medal) 
@@ -90,7 +89,7 @@ ggplotly(
   tooltip = c("count")) %>% 
   #layout(legend = list(x = 0.9, y = 0.1))
   layout(legend = list(title=list(text = '')))%>%
-  layout(legend = list(x = 0.9, y = 0.1))%>%
+  layout(legend = list(x = 0.8, y = 0.1))%>%
   layout(annotations = 
             list(x = 1, y = -0.1, text = "Source: RGriffin Kaggle dataset: 120 years of Olympic history: athletes and results.", 
       showarrow = F, xref='paper', yref='paper', 
