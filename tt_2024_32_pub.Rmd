@@ -1,0 +1,165 @@
+---
+title: "Tidy Tuesday Week 32, 2024: The Olympics"
+author: "Lyndsay Miles"
+output: html_document
+---
+I created this visualization using the data set shared by the TidyTuesday project for Week 32 of 2024. It includes data from 1896 to 2016 on participation in the Winter and Summer Olympic Games. I chose to look at medals won by Team USA from 1900 to 2009 by grouping by decade and calculating counts of medals.
+
+My code: 
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(ggplot2)
+library(plotly)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+# Option 1: tidytuesdayR package 
+## install.packages("tidytuesdayR")
+tuesdata <- tidytuesdayR::tt_load(2024, week = 32)
+olympics <- tuesdata$olympics
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#when/where did the United States win the most Gold/Silver/Bronze?
+team_usa <- olympics %>%
+  filter(noc == "USA") %>% 
+  drop_na(medal) 
+
+team_usa_summer <- team_usa %>% 
+  filter (season == "Summer")%>%
+  group_by(year, medal) %>% 
+  summarize(count = n())%>% 
+  mutate(decade = 
+           case_when(
+             year < 1900 ~ "1890s",
+             year < 1910 ~ "1900s",
+             year < 1920 ~ "1910s",
+             year < 1930 ~ "1920s",
+             year < 1940 ~ "1930s",
+             year < 1950 ~ "1940s",
+             year < 1960 ~ "1950s",
+             year < 1970 ~ "1960s",
+             year < 1980 ~ "1970s",
+             year < 1990 ~ "1980s",
+             year < 2000 ~ "1990s",
+             year < 2010 ~ "2000s",
+             year < 2020 ~ "2010s",
+             .default = "other"
+           ))%>%
+  ungroup()
+
+team_usa_summer$medal <- as.factor(team_usa_summer$medal)
+
+team_usa_summer$medal <- ordered(team_usa_summer$medal, levels = c("Gold", "Silver", "Bronze"))
+
+team_usa_summer <- team_usa_summer %>% 
+  filter(decade != "1890s")%>%
+  filter(decade != "2010s")%>%
+  select(medal, count, decade)%>%
+  group_by(decade, medal)%>% 
+  summarize(usa_count = sum(count))
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#olympic colors from https://encycolorpedia.com/9cb0c0
+ p1 <- ggplot(data = team_usa_summer, aes(x=decade, y= usa_count, fill = medal, label = usa_count)) +
+  geom_bar(stat = "identity")+
+  geom_text(size = 3, 
+            color = "white",
+            position = position_stack(vjust = 0.5))+
+  
+  labs(title = "USA Summer Olympic Medals by Decade (1900-2009)")+
+     theme(
+       plot.title = element_text(face = "bold"),
+       plot.caption = element_text(face = "italic"),
+       axis.title.x = element_blank(),
+       axis.title.y = element_blank(),
+       panel.grid.major = element_blank(),
+       panel.grid.minor = element_blank(),
+       panel.background = element_rect(fill = alpha("#0081C8", 0.1)))+
+    scale_fill_manual(values = c("#e9af4e", "#9cb0c0", "#775e39"))+
+    coord_flip()
+```
+
+```{r, echo=FALSE, include=TRUE, warning=FALSE}
+ggplotly(
+  data = p1,
+  tooltip = c("count")) %>% 
+  #layout(legend = list(x = 0.9, y = 0.1))
+  layout(legend = list(title=list(text = '')))%>%
+  layout(legend = list(x = 0.9, y = 0.1))%>%
+  layout(annotations = 
+            list(x = 1, y = -0.1, text = "Source: RGriffin Kaggle dataset: 120 years of Olympic history: athletes and results.", 
+      showarrow = F, xref='paper', yref='paper', 
+      xanchor='right', yanchor='auto', xshift=0, yshift=0,
+      font=list(size=10)))
+```
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+olympic_medals <- olympics %>% 
+  filter(season == "Summer")%>%
+  select(team, noc, year, season, sport, medal) %>% 
+  drop_na(medal)
+
+olympic_medals$medal <- as.factor(olympic_medals$medal)
+
+olympic_medals$medal <- ordered(olympic_medals$medal, levels = c("Gold", "Silver", "Bronze"))
+
+
+olympic_medals_a <- olympic_medals %>% 
+  group_by(year, noc, medal) %>% 
+  summarize(count_n = n())%>% 
+  mutate(decade = 
+           case_when(
+             year < 1900 ~ "1890s",
+             year < 1910 ~ "1900s",
+             year < 1920 ~ "1910s",
+             year < 1930 ~ "1920s",
+             year < 1940 ~ "1930s",
+             year < 1950 ~ "1940s",
+             year < 1960 ~ "1950s",
+             year < 1970 ~ "1960s",
+             year < 1980 ~ "1970s",
+             year < 1990 ~ "1980s",
+             year < 2000 ~ "1990s",
+             year < 2010 ~ "2000s",
+             year < 2020 ~ "2010s",
+             .default = "other"
+           ),
+         usa_world = 
+           case_when(
+             noc == "USA" ~ "USA",
+             .default = "not_USA"
+           ))%>%
+  ungroup() %>% 
+  filter(decade != "1890s")%>%
+  filter(decade != "2010s")
+
+olympics_medal_b <- olympic_medals_a %>% 
+  select(medal, count_n, decade, usa_world)%>%
+  group_by(decade,medal,usa_world)%>%
+  summarize(total_count = sum(count_n))
+
+olympics_medal_wider <- olympics_medal_b %>%
+  pivot_wider(names_from = usa_world,
+              values_from = total_count)%>%
+  mutate(win_ratio = USA/not_USA)
+
+ggplot(
+  data = olympics_medal_wider,
+  aes(x = decade,
+      y = win_ratio)
+)+
+  geom_point()+
+  facet_wrap(~medal)
+
+```
+
+
+
+
+
