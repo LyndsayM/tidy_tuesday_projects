@@ -1,0 +1,234 @@
+---
+title: "Tidy Tuesday Week 33, 2024: World's Fairs"
+author: "Lyndsay Miles"
+output: html_document
+---
+This week's dataset offered by Tidy Tuesday is a list of World's Fairs held between 1851 and 2021. I used the rworldmap package to add in geographical region by country where each fair was held. The US, Western Europe, and members of the British Commonwealth hosted nearly all of the World's Fairs until the 1970s, at which point there is a notable shift. The Fairs start to be held more often in other parts of the world, with more countries in attendance as well. This bubble plot shows the change in number of attending countries over time, sized by number of countries attending and colored by global region.
+
+My code: https://github.com/LyndsayM/tidy_tuesday_projects/blob/main/tt_2024_33_pub.Rmd
+
+My interactive chart: http://rpubs.com/LyndsayM/TT_Worlds_Fairs_2024
+```{r setup, echo=FALSE, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(hrbrthemes)
+library(rworldmap)
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+# Option 1: tidytuesdayR package 
+tuesdata <- tidytuesdayR::tt_load('2024-08-13')
+
+worlds_fairs <- tuesdata$worlds_fairs
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(rvest)
+library(polite)
+library(janitor)
+#cleaning
+
+session <- polite::bow(
+  "https://en.wikipedia.org/wiki/List_of_world_expositions",
+  user_agent = "TidyTuesday (https://tidytues.day, jonthegeek+tidytuesday@gmail.com)",
+  delay = 0
+)
+
+worlds_fair_tables <- 
+  session |> 
+  polite::scrape() |> 
+  rvest::html_table()
+
+worlds_fairs <-
+  worlds_fair_tables[[2]] |>
+  janitor::clean_names() |>
+  dplyr::rename(
+    country = "country_2",
+    city = "city_2",
+    theme = "theme_3",
+    visitors = "visitorsin_millions_4",
+    cost = "costin_millions_usd_unless_specified",
+    area = "area_ha",
+    attending_countries = "attendingcountries"
+  ) |> 
+  tidyr::separate_wider_delim(
+    "dates",
+    " – ",
+    names = c("start", "end")
+  ) |> 
+  tidyr::separate_wider_delim(
+    c("start", "end"),
+    "/",
+    names = c("month", "year"),
+    names_sep = "_"
+  ) |> 
+  dplyr::mutate(
+    dplyr::across(
+      dplyr::everything(),
+      \(x) {
+        stringr::str_remove_all(x, "\\[\\d+\\]") |> 
+          stringr::str_squish()
+      }
+    ),
+    dplyr::across(
+      c("start_month", "start_year", "end_month", "end_year", "attending_countries"),
+      as.integer
+    ),
+    notables = stringr::str_replace_all(notables, "([a-z])([A-Z])", "\\1, \\2"),
+    visitors = as.double(visitors),
+    # One expo has two costs, we'll use the first one
+    cost = dplyr::case_when(
+      name_of_exposition == "Expo 2010" ~ "4200",
+      .default = cost
+    ) |>
+      stringr::str_remove_all("[^0-9]*") |>
+      as.double(),
+    area = as.double(area)
+  )
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#add regions
+#library(rworldmap)
+df_regions  <- countryRegions
+regions <- df_regions %>% 
+  select(ADMIN, GEO3)%>%
+  rename("country" = ADMIN)%>%
+  mutate(country = case_when(country == "United States of America" ~ "United States",
+                             country == "China" ~ "People's Republic of China",
+                             .default = as.character(country)))
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#2 categories: World Expo and Specialised Expo
+#70 cases
+#51 host cities
+#range of attending countries: 8 to 192
+
+#distribution of world fairs by countries
+ggplot(data = worlds_fairs, aes(x=end_year))+geom_histogram()
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#who hosts the most World's Fairs?
+worlds_fairs %>% 
+  group_by(country)%>% 
+  summarize(num_fairs = n())%>%
+  arrange(desc(num_fairs))
+#US has hosted the most worlds fairs (11) but hasn't hosted one since 1984  
+#France is the next highest, but hasn't hosted one since 1951
+
+#how has participation changed over time?
+ggplot(data = worlds_fairs, aes(x=start_year, y = attending_countries))+geom_point()
+#Fewer that 50 countries attended in general until the 1950s. This increased in the 1960s, and since the late 1990s and on the number of countries in attendance is now over 100
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+worlds_fairs_clean <- worlds_fairs %>% 
+  mutate(current_country = case_when(city == "Melbourne" ~ "Australia",
+                                     city == "Vienna" ~ "Austria",
+                                     city == "West Berlin" ~ "Germany",
+                                     city == "Munich" ~ "Germany",
+                                     .default = as.character(country)))
+worlds_fairs_regions <- worlds_fairs_clean %>% 
+  select(start_year, name_of_exposition, city, current_country, attending_countries, visitors, category) %>% 
+  rename("country" = current_country) %>% 
+  left_join(regions, by = "country") 
+
+worlds_fairs_regions %>% 
+  group_by(GEO3)%>% 
+  summarize(tot_fair = n())
+
+worlds_fairs_regions$GEO3 <- as.factor(worlds_fairs_regions$GEO3)
+```
+
+
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+#This visualization shows the composition of Worlds Fairs by the number of attending countries by year and the geographic region where the Worlds Fair was held.
+p1 <- ggplot(data = worlds_fairs_regions, aes(x=start_year, y = attending_countries, label = country, fill = GEO3))+
+  geom_point()+
+  geom_area(alpha = 0.5)+
+  labs(title = "Worlds Fairs, 1851-2021: Number of attending countries by year and \n by geographic region of Fair location",
+       caption = "Source: List of world expositions (Wikipedia)",
+       fill = "Global Region")+
+       
+  theme(
+       plot.title = element_text(face = "bold"),
+       plot.caption = element_text(face = "italic"),
+       axis.title.x = element_blank(),
+       axis.title.y = element_blank(),
+       panel.grid.major = element_blank(),
+       panel.grid.minor = element_blank()
+  )+
+  scale_x_continuous(breaks = seq(1850, 2025, by = 20))
+p1
+```
+
+```{r, echo = FALSE, include = FALSE, warning = FALSE}
+ggplotly(
+  data = p1,
+  tooltip = c("country", "start_year"))
+```
+
+```{r,include = FALSE, warning = FALSE}
+#bubble plot of attending countries by year, sized and colored by global region
+p2 <- 
+  ggplot(data = worlds_fairs_regions, 
+             aes(x=start_year, 
+                 y = attending_countries, 
+                 size=attending_countries, color = GEO3,
+                 color = country))+
+  geom_point(alpha = 0.75,
+             aes(text = paste("Year:", start_year,
+                              "<br> Country:", country,
+                              "<br> Region:", GEO3)))+
+  labs(title = "World's Fairs, 1851-2021: Number of Attending Countries \nby Year and Region of Fair Location",
+       caption = "Source: List of world expositions (Wikipedia)",
+       color = "")+
+  guides(fill="none", size="none")+
+  #https://www.learnui.design/tools/data-color-picker.html
+  scale_color_manual(values = c("#c2006a", 
+                                #Australia & Canada
+                                "#8376ba", "#b4a8dc", 
+                                "#e32858", "#f85243", "#ff7c29", "#ffa600", 
+                                #US and Western Europe
+                                "#0b1d78", "#514799"))+
+  theme_classic()+
+  theme(
+    
+    plot.title = element_text(face = "bold"),
+    plot.caption = element_text(face = "italic"),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )+
+  scale_x_continuous(breaks = seq(1850, 2025, by = 20))
+p2
+```
+
+```{r, echo=FALSE, warning = FALSE}
+ggplotly(
+ data = p2,
+ height = 600,
+ width = 850,
+ tooltip = "text")%>%
+  layout(
+    margin = list(b=130,t=100), 
+    annotations = list(x = 1, y = -0.2, text = "Source: List of world expositions (Wikipedia)\nAuthor: Lyndsay Miles", 
+      showarrow = F, xref='paper', yref='paper', 
+      xanchor='right', yanchor='auto', xshift=0, yshift=0,
+      font=list(size=12,fontfacet="italic"))
+ )
+```
+
+
+
+
+
