@@ -3,7 +3,7 @@ title: "Tidy Tuesday Week 33, 2024: World's Fairs"
 author: "Lyndsay Miles"
 output: html_document
 ---
-This week's dataset offered by Tidy Tuesday is a list of World's Fairs held between 1851 and 2021. I used the rworldmap package to add in geographical region by country where each fair was held. The US, Western Europe, and members of the British Commonwealth hosted nearly all of the World's Fairs until the 1970s, at which point there is a notable shift. The Fairs start to be held more often in other parts of the world, with more countries in attendance as well. This bubble plot shows the change in number of attending countries over time, sized by number of countries attending and colored by global region.
+This week's Tidy Tuesday dataset is a list of World's Fairs held between 1851 and 2021. I used the rworldmap package to add in geographical region by country where each fair was held. The US, Western Europe, and members of the British Commonwealth hosted nearly all of the World's Fairs until the 1970s, at which point there is a notable shift. The Fairs start to be held more often in other parts of the world, with more countries in attendance as well. This bubble plot shows the change in number of attending countries over time, sized by number of countries attending and colored by global region.
 
 My code: https://github.com/LyndsayM/tidy_tuesday_projects/blob/main/tt_2024_33_pub.Rmd
 
