@@ -1,0 +1,88 @@
+---
+title: "tt_wk52_christmas"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(readr)
+library(wordcloud)
+library(textdata)
+library(RColorBrewer)
+library(sysfonts)
+library(showtext)
+library(dplyr)
+library(ggplot2)
+library(ggwordcloud)
+```
+
+```{r}
+christmas_novel_authors <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-12-30/christmas_novel_authors.csv')
+christmas_novel_text <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-12-30/christmas_novel_text.csv')
+christmas_novels <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-12-30/christmas_novels.csv')
+```
+
+```{r}
+#https://www.tidytextmining.com/tidytext
+dickens_novel_text <- christmas_novel_text %>% filter(gutenberg_id == c(46, 19337)) %>% select(text)
+data(stop_words)
+```
+
+```{r}
+dickens_tidy <- dickens_novel_text %>% 
+  mutate(line = 1:3646) %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words, by = "word") %>% 
+  drop_na() %>%
+   mutate(
+    word = case_when(
+      str_detect(word, regex("scrooge", ignore_case = TRUE)) ~ "scrooge",
+      str_detect(word, regex("bob", ignore_case = TRUE)) ~ "bob",
+      str_detect(word, regex("christmas", ignore_case = TRUE)) ~ "christmas",
+      str_detect(word, regex("ghost", ignore_case = TRUE)) ~ "ghost",
+      str_detect(word, regex("spirit", ignore_case = TRUE)) ~ "spirit",
+      str_detect(word, regex("marley", ignore_case = TRUE)) ~ "marley",
+      TRUE ~ as.character(word)
+    )
+  )
+```
+
+```{r}
+#add Victorian style google font
+font_add_google(name = "Bentham", family = "bentham")
+showtext_auto()
+showtext_opts(dpi = 300)
+```
+
+```{r}
+# Prepare data for wordcloud
+word_df <- dickens_tidy %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 25) %>%
+  arrange(desc(n))
+
+#boost size of top word, "scrooge"
+word_df <- word_df %>%
+  mutate(size_scaled = ifelse(row_number() == 1, sqrt(n) * 1.5, sqrt(n)))
+
+# plot
+ggplot(word_df, aes(label = word, size = size_scaled, color = n)) +
+  geom_text_wordcloud(
+    family = "bentham",
+    rm_outside = TRUE,
+    angle = 0,
+    grid_size = 0.5,
+    stroke = 0.2,
+  stroke_color = "white"
+  ) +
+  scale_size_area(max_size = 10) +          # largest font cap
+  scale_color_gradientn(colors = c("#006400", "#FFD700", "#B22222"))+
+  theme_minimal()
+
+ggsave("img/dickens_wordcloud.png", width = 10, height = 10, dpi = 300)
+
+```
