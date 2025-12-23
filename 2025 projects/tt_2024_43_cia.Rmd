@@ -1,0 +1,104 @@
+---
+title: "tt_2024_43_cia_factbook"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Option 1: tidytuesdayR package 
+## install.packages("tidytuesdayR")
+
+tuesdata <- tidytuesdayR::tt_load('2024-10-22')
+## OR
+tuesdata <- tidytuesdayR::tt_load(2024, week = 43)
+
+cia_factbook <- tuesdata$cia_factbook
+
+# Option 2: Read directly from GitHub
+
+cia_factbook <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2024/2024-10-22/cia_factbook.csv')
+
+# Mostly clean data provided by the {usdatasets} R package
+# (https://cran.r-project.org/package=usdatasets). No cleaning was necessary.
+
+# pak::pak("usdatasets")
+library(dplyr)
+library(usdatasets)
+cia_factbook <- usdatasets::cia_factbook_tbl_df |> 
+  dplyr::mutate(
+    dplyr::across(
+      c("area", "internet_users"),
+      as.integer
+    )
+  )
+```
+
+```{r}
+#pak::pak("r4ds/ttmeta")
+#library(tidyverse)
+#library(ttmeta)
+
+#country_datasets <- ttmeta::tt_datasets_metadata |> 
+ # dplyr::mutate(
+  #  has_country = purrr::map_lgl(
+   #   .data$variable_details,
+    #  \(var_dets) {
+     #   !is.null(var_dets) && 
+      #    any(stringr::str_detect(tolower(var_dets$variable), "country"))
+    #  }
+    #)
+  #) |> 
+  #dplyr::filter(has_country)
+```
+
+
+```{r}
+#libraries
+library(ggplot2)
+library(plotly)
+library(hrbrthemes)
+library(countrycode)
+library(ggrepel)
+```
+
+```{r}
+cia_factbook <- cia_factbook %>% 
+  mutate(country_region = countrycode(country, origin='country.name', destination = 'region'))%>% 
+  na.omit(country_region)
+```
+
+```{r}
+ggplot(data = cia_factbook, aes(x=birth_rate, y = infant_mortality_rate, size = population))+
+  geom_point(stat="identity")
+```
+
+```{r}
+p1 <- ggplot(data = cia_factbook, aes(x=maternal_mortality_rate, y = birth_rate, size = population))+
+  geom_point(aes(color = country_region))+
+  labs(
+    x = "Maternal mortality rate",
+    y = "Birth rate",
+    size = "Population",
+    title = "Correlation Between Maternal Mortality and \nBirth Rate by Country (2014)",
+    color = "Region",
+    caption = "Source: CIA Factbook, {usdatasets} R package\nLyndsay Miles #ggplot2",
+    tag = "Maternal Mortality Rate (Number\nMaternal Deaths per 100K Live Births)
+    \nBirth Rate (Number live births\nper 1,000 people)")+
+  scale_x_log10()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        plot.tag.position = c(.70, .10),
+        plot.tag = element_text(hjust = 0, size =8))+
+  scale_color_manual(values = c("#0bb4ff", "#50e991", "#e6d800", "#9b19f5", "#ffa300", "#dc0ab4", "#b30000"))+
+  coord_cartesian(clip = "off")
+
+p1
+```
+

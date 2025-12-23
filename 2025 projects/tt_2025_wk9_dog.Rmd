@@ -1,0 +1,77 @@
+---
+title: "tt_2025_9_dog"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#https://github.com/rfordatascience/tidytuesday/blob/main/data/2025/2025-03-04/readme.md
+```
+
+```{r}
+# Option 2: Read directly from GitHub
+
+longbeach <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-03-04/longbeach.csv')
+```
+
+```{r}
+library(tidyverse)
+library(devtools)
+library(ggplot2)
+#install.packages("networkD3")
+library(networkD3)
+```
+
+```{r}
+df <- longbeach %>%
+  mutate_if(sapply(df, is.character), as.factor)
+
+df <- df %>% 
+  mutate(intake_year = year(ymd(intake_date)))%>%
+  drop_na(outcome_type)
+```
+    
+```{r}
+#number intake by animal type and year
+df_dog <- df %>% 
+  filter(animal_type %in% "dog")
+
+df_dog %>%
+  group_by(intake_year) %>% 
+  summarise(N = n())%>% 
+  arrange(desc(N))
+
+unique(df_dog$intake_type) #12 types
+unique(df_dog$outcome_type) #18 types
+```
+    
+```{r}
+df_cat <- df %>% 
+  filter(animal_type %in% "cat")
+
+df_cat <- df_cat %>% 
+  #how long between intake and outcome? 
+  mutate(time_to_outcome = outcome_date - intake_date)
+
+df_cat %>%
+  group_by(outcome_type) %>% 
+  summarise(N = n())%>% 
+  arrange(desc(N))
+
+df_cat %>%
+  group_by(intake_type) %>% 
+  summarise(N = n())%>% 
+  arrange(desc(N))
+#keep top most commo cat intake_type
+#vars <- c('stray', 'owner surrender', 'welfare seized',
+ #                            'return', 'trap, neuter, return')
+#df_topcat <- df_cat %>% 
+ # filter(intake_type %in% vars)
+```
+    
+```{r}
+ggplot(data = df_cat, aes(x = time_to_outcome, y = intake_type))+ geom_point()
+```
+
