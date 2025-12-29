@@ -1,0 +1,159 @@
+---
+title: "tt_2024_43_cia_factbook"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Option 1: tidytuesdayR package 
+## install.packages("tidytuesdayR")
+global_holidays <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2024/2024-12-24/global_holidays.csv')
+monthly_passengers <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2024/2024-12-24/monthly_passengers.csv')
+
+gdp <- readxl::read_excel("C:/Users/lymil/OneDrive/Desktop/R_Projects/tidy_tuesday_projects/data/WITS-Country-Timeseries.xlsx", sheet ="Country-Timeseries")
+
+library(tidyverse)
+library(withr)
+
+url <- "https://data.worldpop.org/GIS/Holiday_Data/public_holidays/public_holidays_2010_2019.zip"
+path <- withr::local_tempfile(fileext = ".zip")
+download.file(url, path)
+global_holidays <- readr::read_csv(path) |> 
+  dplyr::mutate(Date = lubridate::dmy(Date))
+
+
+url <- "https://data.worldpop.org/GIS/Flight_Data/monthly_volume_of_airline_passengers/monthly_vol_of_airline_pass_in_90_countries_2010_2018.zip"
+path <- withr::local_tempfile(fileext = ".zip")
+download.file(url, path)
+monthly_passengers <- readr::read_csv(path) |>
+  dplyr::mutate(
+    dplyr::across(c(Year, Month), as.integer)
+  )
+```
+
+```{r}
+#libraries
+library(ggplot2)
+library(plotly)
+library(hrbrthemes)
+library(countrycode)
+library(ggrepel)
+```
+
+```{r}
+gdp_clean <- gdp %>% 
+  select(`Country Name`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`)%>% 
+  pivot_longer(starts_with("20"),
+               names_to = "year",
+               #names_prefix = "20",
+               values_to = "gdpPerCap",
+               values_drop_na = TRUE)%>% 
+  mutate(country_name = `Country Name`)%>%
+  mutate(country = case_when(country_name %in% "Faeroe Islands" ~ "Faroe Islands",
+                             country_name %in% "St. Lucia" ~ "Saint Lucia",
+                             TRUE ~ country_name)) 
+
+#if possible, add gdp info for Faroe Islands, Saint Lucia
+```
+
+```{r}
+#how much do people travel on the most commonly mentioned holiday?
+#global holidays - break out date to month and year
+#link holidays with total/domestic/international travel in monthly_passengers
+aggregate( Name~ADM_name,global_holidays, function(x) length(unique(x))) %>% arrange(desc(Name))
+```
+
+```{r}
+#What is the most common holiday listed?
+global_holidays %>% 
+  count(Name) %>% 
+  
+  # now required with changes to dplyr::count() 
+  group_by(Name) %>%           
+  #mutate(prop = prop.table(n)) %>%
+  arrange(desc(n))
+#the most common holiday listed is Christmas Day - it's listed 1853 times
+```
+
+```{r}
+christmas_travel <- global_holidays %>% 
+  filter(Name %in% "Christmas Day")
+
+unique(christmas_travel$ADM_name) #185 locations are represented!
+#how many monthly travelers were there in the months of December and January (because some countries celebrate Christmas in January)?
+library(lubridate)
+christmas_travel <- christmas_travel %>%
+  mutate(new_date = as.Date(Date, "%m/%d/%Y"),
+         Month = as.integer(strftime(new_date,"%m")),
+         Year = as.integer(strftime(new_date, "%Y")))  %>%
+  left_join(monthly_passengers, by = c("ISO3", "Month", "Year"))%>%
+  drop_na(Total_OS)
+
+christmas_travel$ADM_name <- as.factor(christmas_travel$ADM_name)
+christmas_travel$ISO3 <- as.factor(christmas_travel$ISO3)
+christmas_travel$Date <- as.factor(christmas_travel$Date)
+christmas_travel$year <- as.factor(christmas_travel$Year)
+
+#CLEANING
+christmas_travel <- christmas_travel %>% 
+  mutate(country = case_when(ADM_name %in% 'Us' ~ "United States",
+                             ADM_name %in% 'Uk' ~ "United Kingdom", 
+                             ADM_name %in% 'Costa-rica' ~ "Costa Rica",
+                             ADM_name %in% 'Cayman-islands' ~ "Cayman Islands",
+                             ADM_name %in% 'Faroe-islands' ~ "Faroe Islands",
+                             ADM_name %in% 'Hong-kong' ~ "Hong Kong, China",
+                             ADM_name %in% 'Dominican-republic' ~ "Dominican Republic",
+                             ADM_name %in% 'New-zealand' ~ "New Zealand",
+                             ADM_name %in% 'South-africa' ~ "South Africa",
+                             ADM_name %in% 'South-korea' ~ "South Korea",
+                             ADM_name %in% 'Saint-lucia' ~ "Saint Lucia",
+                             ADM_name %in% 'El-salvador' ~ "El Salvador",
+                             TRUE ~ ADM_name)) 
+
+christmas_travel_clean <- christmas_travel %>% 
+  select(country, year, Type, Total, Domestic, International, Total_OS)
+
+df_joined <- christmas_travel_clean %>% 
+  left_join(gdp_clean, by = c("country", "year"))%>% 
+  select(-c("Country Name", "country_name"))
+
+
+#now 68 countries
+```
+
+```{r}
+ggplot(data = christmas_travel, aes(x=reorder(ADM_name, Total_OS), y = Total_OS))+
+  geom_col()+
+  coord_flip()
+#US travel dominates all the other countries
+```
+
+```{r}
+#which countries have the most passengers traveling when US is removed as an outlier
+christmas_travel_nousa <- christmas_travel %>% 
+  filter(ADM_name != "Us")
+
+ggplot(data = christmas_travel_nousa, aes(x=reorder(ADM_name, Total_OS), y = Total_OS))+
+  geom_col()+
+  coord_flip()
+#with US removed, the country with most travelers is the UK
+```
+
+```{r}
+#what I would like to make
+#animated gapminder style showing correlation between Total_OS and average GDP label by country, showing change over years
+df_joined %>% 
+  group_by(country) %>%
+  ggplot(aes(x = Total_OS, y = gdpPerCap, size = Total_OS))+
+  geom_point()  +
+  scale_x_log10() 
+#there are some funny outliers whose gdpPerCap is very high but their total_OS is quite low. Will investigate who they are.
+#I believe the large bubbles with highest total_OS and mid to high gdp are US, UK
+
+```
+
