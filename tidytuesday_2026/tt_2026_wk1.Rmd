@@ -1,0 +1,90 @@
+---
+title: "tt_2026_wk1"
+output: html_document
+---
+Tidy Tuesday 2026, Week 1: Bring your own data
+From Tidy Tuesday 2025, week 14: Timely and Effective Care by US State
+Source: https://github.com/rfordatascience/tidytuesday/blob/main/data/2025/2025-04-08/readme.md
+
+```{r}
+#libraries
+library(tidyverse)
+```
+
+```{r}
+care_state <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-08/care_state.csv')
+
+```
+EDA
+```{r}
+names(care_state) #state, condition, measure_id, measure_name, score, footnote, start_date, end_date
+unique(care_state$state) #56 states/territories
+#it might help to find a list of the full names of the states/territories
+unique(care_state$condition) 
+#6 conditions
+#it might be interesting to look at 
+unique(care_state$measure_id) 
+#22 measure ids
+care_state %>% 
+  mutate(complete = complete.cases(score)) %>%
+  group_by(condition, complete) %>% 
+  summarize(N = n()) %>% 
+  mutate(prop = N/sum(N))
+
+#NAs
+na_rows_long <- care_state %>%
+  select(state, condition, measure_id) %>%
+  mutate(row_id = row_number()) %>%
+  pivot_longer(-row_id, names_to = "column", values_to = "value") %>%
+  filter(is.na(value)) %>%
+  select(row_id, column)
+
+na_rows_long_num <- care_state %>%
+  select(score) %>%
+  mutate(row_id = row_number()) %>%
+  pivot_longer(-row_id, names_to = "column", values_to = "value") %>%
+  filter(is.na(value)) %>%
+  select(row_id, column)
+#only want to include complete cases but am also going to leave 'cataract surgery outcome' because 78.6% do not have scores
+```
+
+```{r}
+#using 1065 complete cases
+df <- care_state %>% 
+  mutate(complete = complete.cases(score),
+         period = paste0(start_date, " to ", end_date)) %>%
+  filter(condition != "Cataract surgery outcome",
+         complete == TRUE)
+```
+EDA: cleaned df
+```{r}
+unique(df$period) #4 unique timepoints, 
+#Jan 2023-Dec 2023
+#Apr 2023-Mar 2024
+#Oct 2023-Mar 2024
+#Jan 2024-Mar 2024
+
+#shape of cleaned data
+df %>% group_by(condition) %>% summarize(N = n())
+
+#ED = 597, Healthcare Personnel Vax = 104, Sepsis Care = 260
+
+ggplot(data = df, aes(x=score, fill = condition))+geom_histogram()
+#ED scores significantly different/higher than other groups
+#this is because for ED, the score is # of minutes, the value for other conditions is %
+
+ggplot(data = df, aes(x=score))+geom_boxplot()+facet_wrap(~condition)
+ggplot(data = df, aes(x =score, y = condition))+geom_point()
+
+quartiles_by_group <- df %>%
+  group_by(condition) %>%
+  summarise(
+    q1     = quantile(score, 0.25, na.rm = TRUE),
+    median = quantile(score, 0.50, na.rm = TRUE),
+    q3     = quantile(score, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  )
+#ED median # minutes spent in ED before being sent home: 182, about 3 hours! Range is 130 (2 hrs, 10 minutes) and 250 (4 hrs, 10 minutes)
+```
+
+
