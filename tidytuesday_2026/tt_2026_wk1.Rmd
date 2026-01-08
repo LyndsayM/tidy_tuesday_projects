@@ -9,7 +9,37 @@ Source: https://github.com/rfordatascience/tidytuesday/blob/main/data/2025/2025-
 ```{r}
 #libraries
 library(tidyverse)
+library(ggplot2)
+library(shiny)
+library(tidycensus)
+library(plotly)
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(patchwork)
 ```
+
+```{r}
+#census_api_key("e0d96d9fc08ed263c3bc5890269416852471b9b6", install = TRUE) # Set install = TRUE to save it for future sessions
+```
+
+```{r}
+pop_2024_state <- get_estimates(
+  geography = "state",
+  product = "population",
+  vintage = 2023
+) %>%
+  filter(variable == "POPESTIMATE")%>%
+  rename(state_name = "NAME",
+         geoid = "GEOID")
+
+state_list <- data.frame(state_name = state.name, state = state.abb, region = state.region, division = state.division)
+
+df_pop_2024 <- pop_2024_state %>% 
+  left_join(state_list, by = "state_name") %>% 
+  select(-c(variable))
+```
+
 
 ```{r}
 care_state <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-08/care_state.csv')
@@ -54,7 +84,8 @@ df <- care_state %>%
   mutate(complete = complete.cases(score),
          period = paste0(start_date, " to ", end_date)) %>%
   filter(condition != "Cataract surgery outcome",
-         complete == TRUE)
+         complete == TRUE) %>% 
+  left_join(df_pop_2024, by = "state")
 ```
 EDA: cleaned df
 ```{r}
@@ -69,7 +100,7 @@ df %>% group_by(condition) %>% summarize(N = n())
 
 #ED = 597, Healthcare Personnel Vax = 104, Sepsis Care = 260
 
-ggplot(data = df, aes(x=score, fill = condition))+geom_histogram()
+plot_1<- ggplot(data = df, aes(x=score, fill = condition))+geom_histogram()
 #ED scores significantly different/higher than other groups
 #this is because for ED, the score is # of minutes, the value for other conditions is %
 
@@ -87,4 +118,151 @@ quartiles_by_group <- df %>%
 #ED median # minutes spent in ED before being sent home: 182, about 3 hours! Range is 130 (2 hrs, 10 minutes) and 250 (4 hrs, 10 minutes)
 ```
 
+```{r}
+df_edtime <- df %>% filter(condition == "Emergency Department",
+                           #remove measures that are NOT times (these are percentages)
+                           measure_id %in% c("OP_18b", "OP_18c"),
+                           !state %in% c("PR"))%>%
+  mutate(
+    state = fct_inorder(state),
+    visit_type = case_when(
+    str_detect(measure_id, "OP_18b") ~ "General",
+    str_detect(measure_id, "OP_18c") ~ "Psychiatric/Mental Health",
+    TRUE ~ measure_id
+  )) 
+```
 
+```{r}
+state_list_region <- state_list %>% select(state, region)
+#Differences
+df_edtime_wider <- df_edtime %>% 
+  select(state, score, visit_type, value)%>%  
+  pivot_wider(names_from = c(visit_type), values_from = score) %>%
+  mutate(diff = `Psychiatric/Mental Health` - `General`) %>%
+  arrange(desc(diff)) %>%                  # descending order
+  mutate(state = factor(state, levels = state)) %>%  # levels = current row order%>% 
+left_join(state_list_region, by = "state")%>% drop_na(region)
+
+ggplot(data = df_edtime_wider, aes(x= state, y = diff))+ geom_point() 
+```
+
+```{r}
+avg_diff <- mean(df_edtime_wider$diff, na.rm = TRUE)  
+
+ggplot(df_edtime, aes(x = visit_type, y = score)) +
+  geom_violin(fill = "grey80")+
+  labs(x = "", y = "Wait time (in minutes)")+
+  theme_minimal()
+
+ggplot(df_edtime_wider, aes(x = state, y = diff)) +
+  geom_segment(
+    aes(x = state, xend = state, y = 0, yend = diff),
+    linewidth = 0.4
+  ) +
+  geom_point(size = 1) +
+  geom_hline(yintercept = avg_diff, linetype = "dashed", linewidth = 0.4) +
+  coord_flip() +
+  labs(x = "", y = "Difference in wait time (minutes)") +
+  theme_minimal(base_size = 10) +
+  facet_grid(~region)
+```
+
+```{r}
+myfunc <- function(df){
+
+ggplot(df, aes(y = state)) +
+  geom_segment(
+    aes(
+      x    = General,
+      xend = `Psychiatric/Mental Health`,
+      yend = state
+    ),
+    linewidth = .5,
+    color = "grey70"
+  ) +
+  geom_point(
+    aes(x = General, color = "General ED"),
+    size = 2
+  ) +
+  geom_point(
+    aes(x = `Psychiatric/Mental Health`, color = "Psychiatric ED"),
+    size = 2
+  ) +
+  scale_color_manual(
+    values = c(
+      "General ED" = "#00CC00",
+      "Psychiatric ED" = "#810f7c"
+    ),
+    name = NULL
+  ) +
+  labs(
+    x = "",
+    y = "") +
+  theme_minimal() +
+    theme(legend.position = "none")
+}
+```
+
+```{r}
+#South
+df_edtime_wider_south <- df_edtime_wider %>% 
+  filter(region == "South")
+
+p1<- myfunc(df_edtime_wider_south)+ 
+  labs(title = "South")+
+  xlim(xmin = 100, x_max=450)+
+  theme(axis.text.y = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5,
+    plot.margin = margin(2, 2, 2, 2)))
+  
+#Northeast
+df_edtime_wider_ne <- df_edtime_wider %>% 
+  filter(region == "Northeast") 
+
+p2<- myfunc(df_edtime_wider_ne) +
+  labs(title = "Northeast")+
+  xlim(xmin = 100, x_max=450)+
+  theme(axis.text.y = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5,
+    plot.margin = margin(2, 2, 2, 2)))
+
+#North central
+df_edtime_wider_nc <- df_edtime_wider %>% 
+  filter(region == "North Central")
+
+p3<- myfunc(df_edtime_wider_nc)+
+  labs(title = "North Central")+
+  xlim(xmin = 100, x_max=450)+
+  theme(axis.text.y = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5,
+    plot.margin = margin(2, 2, 2, 2)))
+#West
+df_edtime_wider_west <- df_edtime_wider %>% 
+  filter(region == "West")
+  
+p4<-myfunc(df_edtime_wider_west)+
+  labs(title = "West")+
+  xlim(xmin = 100, x_max=450)+
+  theme(axis.text.y = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5,
+    plot.margin = margin(2, 2, 2, 2)))
+combined_plots <- (p1 + p2 + p3 +p4)
+```
+
+```{r}
+combined_plots +
+  plot_layout(guides = "collect")+
+  plot_annotation(
+    title = "Median Emergency Department Wait Times by State and Region",
+    subtitle = "Wait Times Are Longer for Psychiatric/Mental Health Visits Compared to Visits in General",
+    caption = "Lyndsay Miles | #TidyTuesday\nSource: Centers for Medicare & Medicaid Services"
+    
+  ) &
+    theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", size = 12),
+    plot.subtitle = element_text(size = 11),
+    plot.caption = element_text(hjust = 1),
+    plot.margin = margin(t = 4, r = 2, b = 2, l = 2)
+  )
+```
