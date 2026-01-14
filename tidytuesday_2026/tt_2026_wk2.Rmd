@@ -1,0 +1,100 @@
+---
+title: "tt_2026_wk1"
+output: html_document
+format:
+  html:
+    self-contained: true
+---
+Tidy Tuesday 2026, Week 2: The languages of Africa.
+
+```{r}
+#libraries
+if (!require("pacman")) install.packages("pacman")
+library(pacman)
+pacman::p_load(ggplot2, dplyr, tidyr, readr, plotly, starburstR,tibble,dplyr)
+```
+
+```{r}
+africa <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-13/africa.csv')
+
+```
+
+```{r}
+names(africa) #language, family, native_speakers (number), country
+length(unique(africa$language)) #502 languages
+length(unique(africa$family)) #17 language families
+length(unique(africa$country)) #51 countries
+range(africa$native_speakers) #12 to 150,000,000
+#the number of native speakers by language appears to be correct for the entire continent but not by each country. For example, there are 150 million Arabic speakers on the continent, but couldn't be in Algeria (the population isn't that big).
+africa %>% group_by(family,language) %>% summarize(N = n()) %>% arrange(desc(N))
+```
+
+```{r}
+df <- africa %>%
+  distinct(language, .keep_all = TRUE) %>% select(-c(country))
+
+```
+
+```{r}
+# Root node
+root <- tibble(
+  id     = "African Languages",
+  label  = "African Languages",
+  parent = "",
+  value  = sum(df$native_speakers, na.rm = TRUE)
+)
+
+# Families (aggregate native_speakers)
+families <- df %>%
+  group_by(family) %>%
+  summarise(value = sum(native_speakers, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    id     = family,
+    label  = family,
+    parent = "African Languages"
+  )
+
+# Languages (leaf nodes)
+languages <- df %>%
+  transmute(
+    id     = paste(family, language, sep = "::"),  # unique ID
+    label  = language,
+    parent = family,
+    value  = native_speakers
+  )
+
+# Combine everything
+sunburst_data <- bind_rows(root, families, languages)
+```
+
+```{r}
+library(viridis)
+family_colors <- sunburst_data %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+family_colors <- sunburst_data %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+# Join colors back to sunburst_data
+sunburst_data <- sunburst_data %>%
+  left_join(family_colors, by = c("parent" = "id")) %>%
+  mutate(color = ifelse(is.na(color), "#dddddd", color))
+
+fig <- plot_ly(
+  data = sunburst_data,
+  ids = ~id,
+  labels = ~label,
+  parents = ~parent,
+  values = ~value,
+  type = "sunburst",
+  branchvalues = "total",
+  marker = list(colors = ~color)
+)
+fig
+
+```
+

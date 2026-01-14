@@ -253,7 +253,7 @@ combined_plots <- (p1 + p2 + p3 +p4)
 combined_plots +
   plot_layout(guides = "collect")+
   plot_annotation(
-    title = "Median Emergency Department Wait Times by State and Region",
+    title = "Median Emergency Department Wait Times by State and Region, 04-01-2023 to 3-31-2024",
     subtitle = "Wait Times Are Longer for Psychiatric/Mental Health Visits Compared to Visits in General",
     caption = "Lyndsay Miles | #TidyTuesday\nSource: Centers for Medicare & Medicaid Services"
     
