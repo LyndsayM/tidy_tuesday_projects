@@ -32,7 +32,8 @@ africa %>% group_by(family,language) %>% summarize(N = n()) %>% arrange(desc(N))
 ```{r}
 df <- africa %>%
   distinct(language, .keep_all = TRUE) %>% select(-c(country))
-
+df_small <- df %>% filter(native_speakers <11250)
+df_large <- df %>% filter(native_speakers >11249)
 ```
 
 ```{r}
@@ -95,6 +96,176 @@ fig <- plot_ly(
   marker = list(colors = ~color)
 )
 fig
+
+```
+
+Speakers less than 11250 (25%)
+```{r}
+# Root node
+root <- tibble(
+  id     = "African Languages",
+  label  = "African Languages",
+  parent = "",
+  value  = sum(df_small$native_speakers, na.rm = TRUE)
+)
+
+# Families (aggregate native_speakers)
+families <- df_small %>%
+  group_by(family) %>%
+  summarise(value = sum(native_speakers, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    id     = family,
+    label  = family,
+    parent = "African Languages"
+  )
+
+# Languages (leaf nodes)
+languages <- df_small %>%
+  transmute(
+    id     = paste(family, language, sep = "::"),  # unique ID
+    label  = language,
+    parent = family,
+    value  = native_speakers
+  )
+
+# Combine everything
+sunburst_data_small <- bind_rows(root, families, languages)
+
+library(viridis)
+family_colors <- sunburst_data_small %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+family_colors <- sunburst_data_small %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+# Join colors back to sunburst_data
+sunburst_data_small <- sunburst_data_small %>%
+  left_join(family_colors, by = c("parent" = "id")) %>%
+  mutate(color = ifelse(is.na(color), "#dddddd", color))
+
+fig_small <- plot_ly(
+  data = sunburst_data_small,
+  ids = ~id,
+  labels = ~label,
+  parents = ~parent,
+  values = ~value,
+  type = "sunburst",
+  branchvalues = "total",
+  marker = list(colors = ~color)
+)
+fig_small
+
+```
+
+```{r}
+# Root node
+root <- tibble(
+  id     = "African Languages",
+  label  = "African Languages",
+  parent = "",
+  value  = sum(df_large$native_speakers, na.rm = TRUE)
+)
+
+# Families (aggregate native_speakers)
+families <- df_large %>%
+  group_by(family) %>%
+  summarise(value = sum(native_speakers, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    id     = family,
+    label  = family,
+    parent = "African Languages"
+  )
+
+# Languages (leaf nodes)
+languages <- df_large %>%
+  transmute(
+    id     = paste(family, language, sep = "::"),  # unique ID
+    label  = language,
+    parent = family,
+    value  = native_speakers
+  )
+
+# Combine everything
+sunburst_data_large <- bind_rows(root, families, languages)
+
+library(viridis)
+family_colors <- sunburst_data_large %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+family_colors <- sunburst_data_large %>%
+  filter(parent == "African Languages") %>%
+  mutate(color = viridis(n(), option = "D")) %>%
+  select(id, color)
+
+# Join colors back to sunburst_data
+sunburst_data_large <- sunburst_data_large %>%
+  left_join(family_colors, by = c("parent" = "id")) %>%
+  mutate(color = ifelse(is.na(color), "#dddddd", color))
+
+fig_large <- plot_ly(
+  data = sunburst_data_large,
+  ids = ~id,
+  labels = ~label,
+  parents = ~parent,
+  values = ~value,
+  type = "sunburst",
+  branchvalues = "total",
+  marker = list(colors = ~color)
+)
+fig_large
+
+```
+
+Linguistic diversity by country (bigger bubbles, more languages per country)
+```{r}
+df_divers <- africa %>% 
+  group_by(country) %>% summarize(tot_lang = length(unique(language)))
+
+ggplot(df_divers, aes(x = reorder(country, tot_lang), y = tot_lang, size = tot_lang)) +
+  geom_point(alpha = 0.7, color = "steelblue") +
+  scale_size_continuous(range = c(3, 15)) +
+  coord_flip() +
+  labs(
+    x = "Country",
+    y = "Number of Languages Spoken",
+    size = "Languages"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+library(dplyr)
+library(packcircles)
+library(ggplot2)
+
+# Generate circle packing layout
+packing <- circleProgressiveLayout(df_divers$tot_lang, sizetype = "area")
+df_bubbles <- cbind(df_divers, packing)
+
+# Generate circle vertices for plotting
+circle_data <- circleLayoutVertices(packing, npoints = 50)
+
+# Plot
+ggplot() +
+  geom_polygon(data = circle_data, aes(x, y, group = id, fill = df_bubbles$country[id]), color = "black", alpha = 0.6) +
+  geom_text(data = df_bubbles, aes(x, y, label = country, size = tot_lang), vjust = -0.5) +
+  geom_text(data = df_bubbles, aes(x, y, label = tot_lang, size = tot_lang), vjust = 1.5)+
+  coord_equal() +
+  scale_fill_viridis_d() +
+  theme_void() +
+  scale_size_continuous(range = c(2, 4)) +  # adjust min/max font size
+  labs(title = "The linguistic diversity of African countries",
+       subtitle = "Number of languages spoken by country",
+       fill = "country",
+       caption = "Lyndsay Miles | #TidyTuesday\nSource:Wikipedia")+
+  theme(legend.position = "none")
+
 
 ```
 
