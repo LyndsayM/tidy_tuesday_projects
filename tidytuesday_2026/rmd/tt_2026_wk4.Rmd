@@ -1,0 +1,54 @@
+---
+title: "Tidy Tuesday 2026, Week 4: Brazilian Companies"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+https://github.com/rfordatascience/tidytuesday/blob/main/data/2026/2026-01-27/readme.md
+
+#tidytuesday | 2026 | Wk4 | Brazilian Companies
+
+"This week we’re exploring Brazilian Companies, curated from Brazil’s open CNPJ (Cadastro Nacional da Pessoa Jurídica) records published by the Brazilian Ministry of Finance / Receita Federal on the national open-data portal (dados.gov.br)."
+
+```{r}
+companies <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-27/companies.csv')
+#legal_nature <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-27/legal_nature.csv')
+#qualifications <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-27/qualifications.csv')
+#size <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-01-27/size.csv')
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(ggthemes)
+```
+How is a company's legal status associated with its declared shared capital?
+```{r}
+df1 <- companies %>% 
+  group_by(legal_nature) %>% 
+  summarize(
+  avg_stock = mean(capital_stock, na.rm = TRUE),
+  total_companies = n_distinct(company_id)
+)
+df1 %>% 
+  mutate(legal_nature = reorder(legal_nature, avg_stock)) %>%
+    ggplot(aes(x = avg_stock,
+             y = legal_nature,
+             size = total_companies)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(name = "Number of companies") +
+  scale_x_log10(labels = scales::comma)+
+  labs(
+    x = "Average Capital Stock (in BRL, log scale)",
+    y = "",
+    title = "Who Holds the Capital?",
+    subtitle = "Publicly Traded Corporations and LLCs report the highest average stock",
+    caption = "Lyndsay Miles | #TidyTuesday\nSource: Brazilian Ministry of Finance"
+  ) +
+  theme_economist()
+```
