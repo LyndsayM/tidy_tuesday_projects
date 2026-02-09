@@ -1,0 +1,155 @@
+---
+title: "Tidy Tuesday 2026, Week 5: Edible Plants Database"
+author: "Author: Lyndsay Miles"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data source for this week's visualizations: <https://github.com/rfordatascience/tidytuesday/blob/main/data/2026/2026-02-03/readme.md>
+
+#tidytuesday \| 2026 \| Wk5 \| Edible Plants Database
+
+This week our challenge was to edible plants courtesy of the GROW Observatory's Edible Plant Database (EPD). The GROW Observatory is a European Citizen Science project regarding growing food, soil moisture sensing and land monitoring. Thanks to Nicola Rennie, who curated this week's dataset.
+
+For this challenge, I decided to look at edible plants in terms of 3 common considerations (temperature tolerance, water required, and seasonality) through a Sankey chart using the ggalluvial() R package. Since Sankey charts cannot tell us much about a particular plant, I also created an interactive chart using reactable().
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include = FALSE}
+edible_plants <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-02-03/edible_plants.csv')
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(ggthemes)
+library(ggalluvial)
+library(reactable)
+library(htmltools)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include = FALSE}
+#note: data cleaning not shown
+df <- edible_plants %>% 
+  mutate(water_cat = case_when(water == "very high" ~ "Very High",
+                               water == "Medium" ~ "Medium",
+                               water == "Very low" ~ "Very Low",
+                               TRUE ~ water
+                               ),
+         season_cat = case_when(season %in% 
+                                  c("biennial","biennial, grown as annual", "Biennial, grown as an annual") ~ "Biennial",
+                                season %in% c("Annual", "Annual/perannial") ~ "Annual",
+                                season %in% c("Perennial", "perennial", "Perrenial", "Perrenial evergreen", "Semi-evergreen perrenial") ~ "Perennial",
+                                TRUE ~ NA),
+         temperature_class = case_when(
+           temperature_class == "Very hard" ~ "Very hardy", 
+           TRUE ~ temperature_class)
+  ) %>%
+  mutate(water_cat = factor(water_cat,
+                          levels = c("Very Low", "Low", "Medium", "High", "Very High")),
+         temperature_class = factor(temperature_class,
+                                    levels = c("Very hardy", "Half hardy", "Hardy",
+                                               "Tender", "Very tender"))
+         )
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include = FALSE}
+flow_data <- df %>%
+  filter(season_cat != "unknown") %>%
+  count(temperature_class, water_cat, season_cat, name = "n")
+```
+
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+#data cleaning not shown
+ggplot(flow_data,
+       aes(axis1 = temperature_class,
+           axis2 = water_cat,
+           axis3 = season_cat,
+           y = n)) +
+
+  geom_alluvium(aes(fill = temperature_class), width = 1/12, alpha = 0.8) +
+  geom_stratum(width = 0.25, fill = "#E9E3D6", color = "#B8B0A3")+
+  geom_text(stat="stratum",
+          aes(label = after_stat(stratum)),
+          vjust = 0.7,
+          size =3.25)+
+  scale_x_discrete(limits = c("Temperature", "Water Required", "Season"),
+                   expand = c(.05, .05)) +
+  labs(
+    title = "What Edible Plants Need to Thrive",
+    subtitle = "From Temperature Tolerance to Water and Season",
+    y = "Number of plants",
+    x = NULL,
+    fill = "Temperature",
+    caption = "Lyndsay Miles | #TidyTuesday\nSource: the GROW Observatory"
+    ) +
+  scale_fill_manual(values = c(
+  "Very hardy" = "#A7C957",
+  "Hardy"      = "#2A9D8F",
+  "Half hardy" = "#264653",
+  "Tender"     = "#E76F51"
+))+
+
+  theme_solarized()+
+  theme(
+  plot.title = element_text(size = 16, face = "bold", color = "#3A3A3A"),
+  plot.caption = element_text(size = 8, color = "#555555"),
+  plot.subtitle = element_text(color = "#555555"),
+  legend.title = element_text(color = "#555555"),
+  legend.text  = element_text(color = "#555555")
+)
+```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include=FALSE}
+table <- df %>% select(
+  -c(water, season) 
+) %>%
+  rename(season = season_cat,
+         water = water_cat) %>% 
+  mutate(plant_name = str_c(common_name, " (", taxonomic_name, ")"),
+         preferred_ph_range = str_c("(", preferred_ph_lower, " , ", preferred_ph_upper, ")")) %>%
+ select(
+  plant_name, season, water, sunlight, temperature_class,
+   soil, nutrients, preferred_ph_range, sensitivities
+  )
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#note: data cleaning not shown
+tagList(
+  tags$h3("Plant growing guide", style = "color:#586E75;"),
+  tags$p("Water, sunlight, soil, and hardiness requirements", style = "color:#777777; margin-top:-6px;"),
+  
+reactable(
+  table,
+  filterable = TRUE,
+  searchable = TRUE,
+  pagination = TRUE,
+  compact = TRUE,
+  striped = TRUE,
+
+  columns = list(
+    plant_name = colDef(name = "Plant name"),
+    season = colDef(name = "Season"),
+    water = colDef(name = "Water"),
+    sunlight = colDef(name = "Sunlight"),
+    temperature_class = colDef(name = "Hardiness"),
+    soil = colDef(name = "Soil"),
+    nutrients = colDef(name = "Nutrients needed"),
+    preferred_ph_range = colDef(name = "Ph Range"),
+    sensitivities = colDef(name = "Sensitivities")
+    
+  ),
+
+  defaultColDef = colDef(
+    headerStyle = list(fontWeight = "600")
+  ),
+  style = list(background = "#FDF6E3")
+)
+)
+
+```
+
