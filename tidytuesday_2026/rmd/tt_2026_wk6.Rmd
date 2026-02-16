@@ -1,0 +1,115 @@
+---
+title: "Tidy Tuesday 2026, Week 6: Events at the 2026 Winter Olympics"
+author: "Author: Lyndsay Miles"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data source for this week's visualizations: <https://github.com/rfordatascience/tidytuesday/blob/main/data/2026/2026-02-10/readme.md>
+
+#tidytuesday \| 2026 \| Wk6 \| The Olympics
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include = FALSE}
+schedule <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-02-10/schedule.csv')
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+pacman::p_load(
+  ggplot2,
+  tidyverse,
+  ggthemes,
+  ggimage,
+  showtext,
+  treemap,
+  patchwork
+)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, include = FALSE}
+#what disciplines have the most scheduled events?
+df <- schedule %>% 
+  group_by(discipline_name) %>%
+  summarize(num_events = n())%>%
+  arrange(desc(num_events)) %>% 
+  mutate(medal = rank(desc(num_events)),
+         medal = case_when(
+           medal == 1 ~ "Gold",
+           medal == 2 ~ "Silver",
+           medal == 3 ~ "Bronze",
+           TRUE ~ "None"
+         )) 
+
+font_add_google("Montserrat", "Montserrat")
+showtext_auto()
+```
+
+```{r}
+p1<-df %>% 
+  ggplot(aes(x = reorder(discipline_name, num_events),
+             y = num_events, fill = medal)) +
+  geom_bar(stat = "identity")+
+  geom_text(aes(label =num_events), hjust = 1.05, color = "#FFFFFF", size = 3)+
+  coord_flip()+
+  labs(x="",y="",
+       title = "Where the Action Is: Curling Had the Most Events at the\n2026 Winter Olympics",
+       caption = "Lyndsay Miles | #TidyTuesday")+
+  theme_economist_white(base_family = "Montserrat")+
+  scale_fill_manual(values = c("Gold" = "#FFD700", 
+                               "Silver" = "#C0C0C0", 
+                               "Bronze" = "#CD7F32",
+                               "None" = "#0078D0"))+
+  theme(legend.position = "none",
+        plot.title = element_text(size = 16, face = "bold", color = "#3A3A3A"),
+  plot.caption = element_text(size = 8, color = "#555555"),
+  plot.subtitle = element_text(color = "#555555"),
+  legend.title = element_text(color = "#555555"),
+  legend.text  = element_text(color = "#555555")
+)
+```
+
+```{r}
+df_curl <- schedule %>% 
+  filter(discipline_code == "CUR") %>% 
+  select(discipline_name, event_description, is_medal_event) %>% 
+  mutate(event_type = case_when(
+    str_detect(event_description, "Mixed Doubles") ~ "Mixed Doubles",
+    str_detect(event_description, "Men's") ~ "Men's",
+    str_detect(event_description, "Women's") ~ "Women's"
+    
+  ),
+  event_name = case_when(
+    str_detect(event_description, "Session 1") ~ "Session 1",
+    str_detect(event_description, "Session 2") ~ "Session 2",
+    str_detect(event_description, "Session 3") ~ "Session 3",
+    str_detect(event_description, "Session 4") ~ "Session 4",
+    str_detect(event_description, "Session 5") ~ "Session 5",
+    str_detect(event_description, "Session 6") ~ "Session 6",
+    str_detect(event_description, "Session 7") ~ "Session 7",
+    str_detect(event_description, "Session 8") ~ "Session 8",
+    str_detect(event_description, "Session 9") ~ "Session 9",
+    str_detect(event_description, "Session 10") ~ "Session 10",
+    str_detect(event_description, "Session 11") ~ "Session 11",
+    str_detect(event_description, "Session 12") ~ "Session 12",
+    str_detect(event_description, "Semi-final") ~ "Semi-final",
+    str_detect(event_description, "Bronze Medal Game") ~ "Bronze Medal Game",
+    str_detect(event_description, "Gold Medal Game") ~ "Gold Medal Game",
+    TRUE ~ event_description))
+
+p2<- df_curl_summary <- df_curl %>% 
+  group_by(event_type, event_name) %>% 
+  summarize(event_num = n())
+# treemap
+treemap(dtf=df_curl_summary,
+            index=c("event_type", "event_name"),
+            vSize="event_num",
+            type="index",
+        fontsize.labels = c(14, 11),
+        title = "\nDistribution of Curling Events (2026 Winter Olympics)\n", 
+       fontsize.title = 14,
+       fontfamily.labels = "montserrat",
+        palette = c("#008C45", "#CD212A", "#F4F5F0")
+       )
+
+```
