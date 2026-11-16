@@ -1,0 +1,59 @@
+---
+title: "TidyTuesday Week 46: NHANES and Cholesterol"
+author: "Lyndsay Miles"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(survey)
+```
+
+```{r}
+cholesterol_mortality <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2026/2026-11-17/cholesterol_mortality.csv')
+#handle lonely psus when subsetting
+options(survey.lonely.psu = "adjust")
+#scale 2yr weight across all 10 pooled cycles (do not use if analysing 1 cycle at a time)
+cholesterol_mortality <- cholesterol_mortality %>% 
+  mutate(weight_10cycle = survey_weight/10)
+
+```
+Survey design
+```{r}
+chol_design <- svydesign(
+  ids = ~psu,
+  strata = ~strata,
+  weights = ~weight_10cycle,
+  nest = TRUE,
+  data = cholesterol_mortality
+)
+```
+Example: survey-weighted mean total cholesterol and mortality rate
+```{r}
+svymean(~total_chol + died, design = chol_design, na.rm = TRUE)
+```
+Subpopulation analysis
+```{r}
+older <- subset(chol_design, age >= 65)
+svymean(~total_chol, design = older, na.rm = TRUE)
+#195.4
+younger <- subset(chol_design, age < 65)
+svymean(~total_chol, design = younger, na.rm = TRUE)
+#195.2
+```
+
+```{r}
+#look at it by age groups
+chol_design <- update(
+  chol_design,
+  age_group = cut(
+    age,
+    breaks = c(17, 39, 59, Inf),
+    labels = c("18-39", "40-59", "60+")
+  )
+)
+svyby(~total_chol, ~age_group, design = chol_design, svymean, na.rm = TRUE)
+```
+
